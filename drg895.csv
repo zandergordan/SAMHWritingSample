@@ -1,0 +1,5 @@
+PatientName,VisitID,Age,DRG,StayLength
+Ben Kowal,56700819,32,895,3
+Johnny William,56700901,19,895,9
+Ben Kowal,56801277,32,895,3
+Anna Jacob,56801281,17,895,5

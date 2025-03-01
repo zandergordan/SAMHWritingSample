@@ -1,0 +1,286 @@
+---
+title: "SAMH Writing Sample"
+format: html
+toc: true
+author: "Zander Gordan"
+date: "March 1 2025"
+---
+
+I need to load the data they provided:
+
+```{r}
+library(tidyverse)
+```
+
+```{r}
+df <- readxl::read_excel("SAMH - Excel Exercise.xlsx", sheet = 2)
+```
+
+## Task 1
+
+I am first interested to understand if `PatientID` maps uniquely to `PatientName`, as it should:
+
+```{r}
+df %>% 
+  select(PatientID) %>% 
+  unique() %>% 
+  nrow()
+
+df %>% 
+  select(PatientID, PatientName) %>% 
+  unique() %>% 
+  nrow()
+```
+
+
+No, they do not. Let me view examples where this is the case:
+
+```{r}
+patient_IDs_w_multiple_names <- df %>% 
+  select(PatientID, PatientName) %>% 
+  unique() %>% 
+  group_by(PatientID) %>% 
+  summarise(n_names = n()) %>% 
+  filter(n_names > 1)
+
+df %>% 
+  inner_join(patient_IDs_w_multiple_names) %>% 
+  arrange(PatientID)
+```
+
+Well, lets see about going the other way, do any patient names correspond to multiple IDs?
+
+```{r}
+patient_names_w_multiple_IDs <- df %>% 
+  select(PatientID, PatientName) %>% 
+  unique() %>% 
+  group_by(PatientName) %>% 
+  summarise(n_IDs = n()) %>% 
+  filter(n_IDs > 1)
+
+df %>% 
+  inner_join(patient_names_w_multiple_IDs) %>% 
+  arrange(PatientName)
+```
+
+Are there any patient names that correspond to different addresses?
+
+```{r}
+patient_names_w_multiple_addresses <- df %>% 
+  select(PatientAddress, PatientName) %>% 
+  unique() %>% 
+  group_by(PatientName) %>% 
+  summarise(n_add = n()) %>% 
+  filter(n_add > 1)
+
+df %>% 
+  inner_join(patient_names_w_multiple_addresses) %>% 
+  arrange(PatientName)
+```
+
+Ok, there are 37 unique values of PatientID, but 48 unique combinations of PatientID and PatientName. Inspecting the ID's with multiple names by hand, they do not appear to be misspellings or changed last names, but completely different names, and also different addresses and ages. There is one name, Seema Kapoor, that corresponds to 2 different ID's, but with the same address, age and sex. Thus, what I would infer about this data is that the PatientID variable is not actually a globally unique identifier for individuals (like a SSN), but rather a local identifier, for instance it may be unique within a hospital, but since we have data from multiple hospitals, we have different people with the same ID number. Therefore I will proceed assuming that PatientName is in fact the appropriate identifier for individuals within this dataset, and it has 47 unique values, therefore we have 47 different patients. As further evidence, there are also precisely 47 unique combinations of PatientName, Age, and Sex, meaning that Age and Sex are constant for each PatientName, as they should be if it uniquely identifies an individual.
+
+```{r}
+df %>% 
+  select(PatientName) %>% 
+  unique() %>% 
+  nrow()
+```
+
+```{r}
+df %>% 
+  select(PatientName, Age, Sex) %>% 
+  unique() %>% 
+  nrow()
+```
+
+
+
+```{r}
+patients_w_multiple_visits <- df %>% 
+  select(PatientName, VisitID) %>% 
+  unique() %>% 
+  group_by(PatientName) %>% 
+  summarise(n_visits = n()) %>% 
+  filter(n_visits > 1)
+
+df %>% 
+  inner_join(patients_w_multiple_visits) %>% 
+  select(PatientName, VisitID, AdmitDate, DischargeDate, n_visits) %>% 
+  filter(!is.na(AdmitDate)) %>% 
+  arrange(PatientName)
+```
+
+There are 5 patients with multiple visits: Ben Kowal, Jane Doe, Mike Smith, Sam Booker, and Seema Kapoor.
+
+## Task 2
+
+Now, as to the DRG's.
+
+```{r}
+df %>% 
+  select(DRGDesc) %>% 
+  unique()
+```
+
+```{r}
+df %>% 
+  select(DRG, DRGDesc) %>% 
+  unique()
+```
+
+DRG and DRGDesc match to one another uniquely, wonderful. Does each patient-visit combo map uniquely to a DRG?
+
+```{r}
+df %>% 
+  select(PatientName, VisitID) %>% 
+  unique()
+```
+
+56 total visits.
+
+```{r}
+df %>% 
+  select(PatientName, VisitID, DRG) %>% 
+  unique()
+```
+
+Yes, DRG code is unique for each visit. So how many of the visits are for Psychoses? which is code 885.
+
+```{r}
+df %>% 
+  select(PatientName, VisitID, DRG) %>% 
+  unique() %>% 
+  filter(DRG == 885)
+```
+
+13 visits, by how many patients?
+
+```{r}
+df %>% 
+  select(PatientName, VisitID, DRG) %>% 
+  unique() %>% 
+  filter(DRG == 885) %>% 
+  select(PatientName) %>% 
+  unique()
+```
+
+13 Psychoses visits by 11 patients (Mike Smith and Sam Booker admitted twice with this DRG code).
+
+## Task 3
+
+Length of stay:
+
+```{r}
+stay_lengths <- df %>% 
+  select(PatientName, VisitID, AdmitDate, DischargeDate) %>% 
+  filter(!is.na(AdmitDate)) %>% 
+  mutate(StayLength = DischargeDate - AdmitDate) %>% 
+  select(PatientName, VisitID, StayLength)
+
+df %>% 
+  left_join(stay_lengths) %>% 
+  write_csv("stay_lengths.csv")
+
+df <- df %>% 
+  left_join(stay_lengths)
+```
+
+## Task 4
+
+Now, what is the average stay length for patients with DRG 895?
+
+```{r}
+df %>% 
+  select(PatientName, VisitID, Age, DRG, StayLength) %>% 
+  unique() %>% 
+  filter(DRG == "895") %>% 
+  write_csv("drg895.csv")
+```
+
+5 day average stay over 4 visits, median age of 19 over 3 patients.
+
+## Task 5
+
+How many visits are conducted by each Physician?
+
+```{r}
+df %>% 
+  select(PatientName, VisitID, Physician) %>% 
+  unique() %>% 
+  group_by(Physician) %>% 
+  summarise(n_visits = n())
+
+df %>% 
+  select(PatientName, VisitID, Physician) %>% 
+  unique() %>% 
+  group_by(Physician) %>% 
+  summarise(n_visits = n()) %>% 
+  write_csv("physician_n_visits.csv")
+```
+
+## Task 6
+
+Now, where are our patients coming from?
+
+```{r}
+df %>% 
+  select(PatientName, City, State) %>% 
+  unique()
+```
+
+
+```{r}
+df %>% 
+  select(PatientName, City, State) %>% 
+  unique() %>% 
+  group_by(City, State) %>% 
+  summarise(n_patients = n()) %>% 
+  ungroup()
+
+df %>% 
+  select(PatientName, City, State) %>% 
+  unique() %>% 
+  group_by(City, State) %>% 
+  summarise(n_patients = n()) %>% 
+  ungroup() %>% 
+  write_csv("patients_by_city.csv")
+```
+
+```{r}
+df %>% 
+  select(PatientName, State) %>% 
+  unique() %>% 
+  group_by(State) %>% 
+  summarise(n_patients = n()) %>% 
+  ungroup()
+```
+
+## Task 7
+
+What can we infer from this analysis?
+
+Not knowing the provenance of this data, it is hard to draw any firm conclusions from the exercises conducted here. What seems most notable is that 3 of the 5 Physicians account for over 90% of the visits in the data. But again, without knowing the provenance of this data I can not conclusively say whether this fact represents real productivity differences between these doctors, or whether it represents differences in hours worked or some other factor. 
+
+I thought it would be interesting to extend Task 4 by calculating average stay lengths for each DRG, so I have done that below.
+
+```{r}
+df %>% 
+  select(VisitID, DRGDesc, StayLength) %>% 
+  unique() %>% 
+  group_by(DRGDesc) %>% 
+  summarise(StayLength = mean(StayLength))
+
+df %>% 
+  select(VisitID, DRGDesc, StayLength) %>% 
+  unique() %>% 
+  group_by(DRGDesc) %>% 
+  summarise(StayLength = mean(StayLength)) %>% 
+  write_csv("stay_length_by_DRG.csv")
+```
+
+
+
+
+
+
